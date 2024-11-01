@@ -2,6 +2,9 @@ package main
 
 import (
 	"fmt"
+	"github.com/FakJeongTeeNhoi/reservation-management/model"
+	"github.com/FakJeongTeeNhoi/reservation-management/router"
+	"github.com/FakJeongTeeNhoi/reservation-management/service"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -16,6 +19,9 @@ func main() {
 	fmt.Println("Starting server...")
 
 	// TODO: Connect to database using gorm
+	model.InitDB()
+
+	service.ConnectMailer()
 
 	server := gin.Default()
 
@@ -29,8 +35,9 @@ func main() {
 	api := server.Group("/api")
 
 	// TODO: Add routes here
+	router.ReserveRouterGroup(api)
 
-	err = server.Run(":3020")
+	err = server.Run(":3030")
 	if err != nil {
 		panic(err)
 	}
