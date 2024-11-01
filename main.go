@@ -23,6 +23,8 @@ func main() {
 
 	service.ConnectMailer()
 
+	service.InitCron()
+
 	server := gin.Default()
 
 	corsConfig := cors.DefaultConfig()

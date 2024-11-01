@@ -3,6 +3,7 @@ package model
 import (
 	"github.com/lib/pq"
 	"gorm.io/gorm"
+	"time"
 )
 
 type Reservation struct {
@@ -67,5 +68,13 @@ func (r *Reservation) Delete() error {
 		map[string]interface{}{
 			"id": r.ID,
 		})
+	return result.Error
+}
+
+func (r *Reservations) GetOldPendingReservations(period time.Duration) error {
+	result := MainDB.Model(&Reservation{}).
+		Where("status = ?", "pending").
+		Where("created_at <= ?", time.Now().Add(-period)).
+		Find(r)
 	return result.Error
 }
