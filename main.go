@@ -8,6 +8,7 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"os"
 )
 
 func main() {
@@ -39,7 +40,7 @@ func main() {
 	// TODO: Add routes here
 	router.ReserveRouterGroup(api)
 
-	err = server.Run(":3030")
+	err = server.Run(":" + os.Getenv("PORT"))
 	if err != nil {
 		panic(err)
 	}

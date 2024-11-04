@@ -7,7 +7,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"os"
 	"strconv"
-	"time"
 )
 
 func checkAvailability(roomId uint, start string, end string) bool {
@@ -71,8 +70,8 @@ func CreateReservationHandler(c *gin.Context) {
 		"reservation": reservation,
 	}))
 
+	// TODO: Flow data to message broker
 	// call grpc to get room info
-
 	// send data via message broker
 }
 
@@ -224,14 +223,4 @@ func DeleteReservationHandler(c *gin.Context) {
 	c.JSON(200, response.CommonResponse{
 		Success: true,
 	})
-}
-
-func DeleteOldPendingReservations() {
-	reservations := model.Reservations{}
-	_ = reservations.GetOldPendingReservations(15 * time.Minute)
-
-	// Delete all old pending reservations
-	for _, reservation := range reservations {
-		_ = reservation.Delete()
-	}
 }
