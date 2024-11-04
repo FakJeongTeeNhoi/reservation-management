@@ -11,7 +11,7 @@ var cron *gocron.Scheduler
 func InitCron() {
 	cron = gocron.NewScheduler(time.UTC)
 
-	SetCronJob(deleteOldPendingReservations, 5*time.Minute)
+	SetCronJob(cancelOldPendingReservations, 5*time.Minute)
 }
 
 func SetCronJob(job func(), interval time.Duration) {
@@ -23,12 +23,13 @@ func SetCronJob(job func(), interval time.Duration) {
 	cron.StartAsync()
 }
 
-func deleteOldPendingReservations() {
+func cancelOldPendingReservations() {
 	reservations := model.Reservations{}
 	_ = reservations.GetOldPendingReservations(15 * time.Minute)
 
 	// Delete all old pending reservations
 	for _, reservation := range reservations {
-		_ = reservation.Delete()
+		reservation.Status = "cancelled"
+		_ = reservation.Update()
 	}
 }
