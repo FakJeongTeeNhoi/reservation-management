@@ -26,6 +26,11 @@ type ReservationCreateRequest struct {
 	RoomId              uint          `json:"room_id"`
 }
 
+type ReservationConfirmationRequest struct {
+	UserId        uint `json:"user_id"`
+	ReservationId uint `json:"reservation_id"`
+}
+
 func (r *ReservationCreateRequest) ToReservation() Reservation {
 	return Reservation{
 		PendingParticipants: r.PendingParticipants,

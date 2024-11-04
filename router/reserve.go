@@ -11,5 +11,6 @@ func ReserveRouterGroup(server *gin.RouterGroup) {
 	reserve.POST("/", controller.CreateReservationHandler)
 	reserve.GET("/", controller.GetReservationsHandler)
 	reserve.GET("/:reservationId", controller.GetReservationHandler)
-	reserve.DELETE("/:reservationId", controller.DeleteReservationHandler)
+	reserve.PUT("/:reservationId", controller.CancelReservationHandler)
+	reserve.PUT("/confirm", controller.ConfirmReservationHandler)
 }

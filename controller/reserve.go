@@ -174,7 +174,7 @@ func GetReservationHandler(c *gin.Context) {
 	}))
 }
 
-func DeleteReservationHandler(c *gin.Context) {
+func CancelReservationHandler(c *gin.Context) {
 	reservationId := c.Param("reservationId")
 	reservation := model.Reservation{}
 
@@ -185,26 +185,9 @@ func DeleteReservationHandler(c *gin.Context) {
 
 	userId := c.GetHeader("user_id")
 	if userId != "" {
-		// check if user is in participants or pending participants
-		isParticipant := false
-		for _, participant := range reservation.Participants {
-			if participant == service.ParseToInt64(userId) {
-				isParticipant = true
-				break
-			}
-		}
-
-		if !isParticipant {
-			for _, pendingParticipant := range reservation.PendingParticipants {
-				if pendingParticipant == service.ParseToInt64(userId) {
-					isParticipant = true
-					break
-				}
-			}
-		}
-
-		if !isParticipant {
-			response.Forbidden("You are not a participant of this reservation").AbortWithError(c)
+		// check if user is the first participant in the reservation
+		if len(reservation.Participants) > 0 && reservation.Participants[0] != service.ParseToInt64(userId) {
+			response.Forbidden("You are not allowed to cancel this reservation").AbortWithError(c)
 			return
 		}
 
@@ -217,6 +200,47 @@ func DeleteReservationHandler(c *gin.Context) {
 
 	if err := reservation.Delete(); err != nil {
 		response.InternalServerError("Failed to delete reservation").AbortWithError(c)
+		return
+	}
+
+	c.JSON(200, response.CommonResponse{
+		Success: true,
+	})
+}
+
+func ConfirmReservationHandler(c *gin.Context) {
+	rcr := model.ReservationConfirmationRequest{}
+	if err := c.ShouldBindJSON(&rcr); err != nil {
+		response.BadRequest("Invalid request").AbortWithError(c)
+		return
+	}
+
+	reservation := model.Reservation{}
+	err := reservation.GetOne(map[string]interface{}{"id": rcr.ReservationId})
+	if err != nil {
+		response.NotFound("Reservation not found").AbortWithError(c)
+		return
+	}
+
+	// check if user is in pending participants
+	isPendingParticipant := false
+	for i, pendingParticipant := range reservation.PendingParticipants {
+		if pendingParticipant == int64(rcr.UserId) {
+			isPendingParticipant = true
+			reservation.PendingParticipants = append(reservation.PendingParticipants[:i], reservation.PendingParticipants[i+1:]...)
+			break
+		}
+	}
+
+	if !isPendingParticipant {
+		response.Forbidden("You are already a participant of this reservation").AbortWithError(c)
+	}
+
+	// add user to participants
+	reservation.Participants = append(reservation.Participants, int64(rcr.UserId))
+
+	if err := reservation.Update(); err != nil {
+		response.InternalServerError("Failed to confirm reservation").AbortWithError(c)
 		return
 	}
 
