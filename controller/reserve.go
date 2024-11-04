@@ -57,7 +57,9 @@ func CreateReservationHandler(c *gin.Context) {
 			"<br> Please validate your account by clicking the link below: <a href='" +
 			os.Getenv("FRONTEND_URL") +
 			os.Getenv("RESERVATION_VERIFY_PATH") +
+			"?reservationId=" +
 			strconv.FormatUint(uint64(reservation.ID), 10) +
+			"&userId=" +
 			strconv.FormatUint(uint64(pendingParticipant), 10) +
 			"'>View Reservation</a>"
 
@@ -238,6 +240,10 @@ func ConfirmReservationHandler(c *gin.Context) {
 
 	// add user to participants
 	reservation.Participants = append(reservation.Participants, int64(rcr.UserId))
+
+	if len(reservation.PendingParticipants) == 0 {
+		reservation.Status = "confirmed"
+	}
 
 	if err := reservation.Update(); err != nil {
 		response.InternalServerError("Failed to confirm reservation").AbortWithError(c)
