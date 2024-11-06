@@ -102,7 +102,7 @@ func GetReservationsHandler(c *gin.Context) {
 		return
 	}
 
-	reservations := unfilteredReservations
+	reservations := model.Reservations{}
 
 	if userId != "" {
 		// filter only reservations that user is in participants or pending participants
@@ -200,8 +200,10 @@ func CancelReservationHandler(c *gin.Context) {
 		}
 	}
 
-	if err := reservation.Delete(); err != nil {
-		response.InternalServerError("Failed to delete reservation").AbortWithError(c)
+	reservation.Status = "cancelled"
+
+	if err := reservation.Update(); err != nil {
+		response.InternalServerError("Failed to cancel reservation").AbortWithError(c)
 		return
 	}
 
