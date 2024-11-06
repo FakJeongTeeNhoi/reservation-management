@@ -27,7 +27,7 @@ services:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_USER}
       PGADMIN_DEFAULT_PASSWORD: ${DB_PASSWORD}
     ports:
-      - "5050:80"
+      - "5052:80"
     networks:
       - app
 
