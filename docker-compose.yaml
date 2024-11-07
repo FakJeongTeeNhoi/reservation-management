@@ -1,12 +1,47 @@
 services:
-  app:
-    build: .
-    container_name: app
+  postgres:
+    image: postgres:12
+    container_name: postgres-reservation
     restart: always
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
     ports:
-      - "3020:3020"
+      - "5432"
     networks:
       - app
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin-reservation
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_USER}
+      PGADMIN_DEFAULT_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "5052:80"
+    networks:
+      - app
+
+  app:
+    build: .
+    container_name: app-reservation
+    restart: always
+    ports:
+      - ${PORT}:${PORT}
+    networks:
+      - app
+
+volumes:
+  postgres-data:
 
 networks:
   app:
