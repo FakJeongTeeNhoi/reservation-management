@@ -1,12 +1,18 @@
 package controller
 
 import (
+	"context"
+	"encoding/json"
+	"log"
+	"os"
+	"strconv"
+
 	"github.com/FakJeongTeeNhoi/reservation-management/model"
+	"github.com/FakJeongTeeNhoi/reservation-management/model/publisher"
 	"github.com/FakJeongTeeNhoi/reservation-management/model/response"
 	"github.com/FakJeongTeeNhoi/reservation-management/service"
 	"github.com/gin-gonic/gin"
-	"os"
-	"strconv"
+	"github.com/google/uuid"
 )
 
 func checkAvailability(roomId uint, start string, end string) bool {
@@ -75,6 +81,37 @@ func CreateReservationHandler(c *gin.Context) {
 	// TODO: Flow data to message broker
 	// call grpc to get room info
 	// send data via message broker
+	// Connect to RabbitMQ
+
+	// call grpc to get room info
+	// call http to get user info
+
+	var report = map[string]interface{}{
+		"id":             reservation.ID,
+		"room_id":        reservation.RoomId,
+		"room_name":      "Room 1",
+		"space_name":     "Conference Room",
+		"space_id":       uuid.New().String(),
+		"status":         "created",
+		"start_datetime": reservation.StartDateTime,
+		"end_datetime":   reservation.EndDateTime,
+		"participant": []map[string]string{
+			{
+				"role":    "Staff",
+				"faculty": "Engineering",
+			},
+		},
+	}
+
+	reportJSON, err := json.Marshal(report)
+	if err != nil {
+		log.Fatalf("Failed to convert report to JSON: %s", err)
+	}
+
+	rabbitMQ := publisher.NewPublisher()
+	ctx := context.Background()
+
+	rabbitMQ.PublishDefaultExchange(ctx, reportJSON)
 }
 
 func GetReservationsHandler(c *gin.Context) {
@@ -256,3 +293,5 @@ func ConfirmReservationHandler(c *gin.Context) {
 		Success: true,
 	})
 }
+
+
