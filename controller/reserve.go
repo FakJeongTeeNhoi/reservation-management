@@ -46,7 +46,6 @@ func CreateReservationHandler(c *gin.Context) {
 	reservation.Status = "created"
 
 	if(userType == "staff") {
-		// TODO: IF staff creation, add all pending participants to participants instead of just the creator
 		reservation.Participants = reservation.PendingParticipants
 		reservation.PendingParticipants = []int64{}
 	} else {
