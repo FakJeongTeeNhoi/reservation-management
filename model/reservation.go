@@ -78,8 +78,26 @@ func (r *Reservation) Delete() error {
 
 func (r *Reservations) GetOldPendingReservations(period time.Duration) error {
 	result := MainDB.Model(&Reservation{}).
-		Where("status = ?", "pending").
-		Where("created_at <= ?", time.Now().Add(-period)).
+		Where("status = ?", "created").
+		Where("created_at::timestamptz <= NOW() - INTERVAL '1 minute' * ?", int(period.Minutes())).
+		Where("pending_participants != '{}'").
+		Find(r)
+	return result.Error
+}
+
+func (r *Reservations) GetLateReservations(period time.Duration) error {
+	result := MainDB.Model(&Reservation{}) .
+	    Where("status =?", "pending").
+		Where("start_date_time::timestamptz <= NOW() - INTERVAL '1 minute' * ?", int(period.Minutes())).
+		Find(r)
+	return result.Error
+}
+
+func (r *Reservations) GetConfirmedReservations(period time.Duration) error {
+	result := MainDB.Model(&Reservation{}).
+		Where("status = ?", "created").
+		Where("pending_participants = '{}'").
+		Where("start_date_time::timestamptz <= NOW() + INTERVAL '1 minute' * ?", int(period.Minutes())).
 		Find(r)
 	return result.Error
 }
