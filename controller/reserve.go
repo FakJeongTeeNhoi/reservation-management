@@ -1,18 +1,23 @@
 package controller
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"log"
+	"net/http"
 	"os"
 	"strconv"
+	"time"
 
+	pb "github.com/FakJeongTeeNhoi/co-working-space-management/generated/space"
 	"github.com/FakJeongTeeNhoi/reservation-management/model"
+	"google.golang.org/grpc/credentials/insecure"
 	"github.com/FakJeongTeeNhoi/reservation-management/model/publisher"
 	"github.com/FakJeongTeeNhoi/reservation-management/model/response"
 	"github.com/FakJeongTeeNhoi/reservation-management/service"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
+	"google.golang.org/grpc"
 )
 
 func checkAvailability(roomId uint, start string, end string) bool {
@@ -32,6 +37,7 @@ func CreateReservationHandler(c *gin.Context) {
 	}
 
 	rcr := model.ReservationCreateRequest{}
+
 	if err := c.ShouldBindJSON(&rcr); err != nil {
 		response.BadRequest("Invalid request").AbortWithError(c)
 		return
@@ -42,16 +48,26 @@ func CreateReservationHandler(c *gin.Context) {
 		return
 	}
 
-	if !service.IsCurrentTimeBefore(rcr.StartDateTime, -30){
+	if !service.IsCurrentTimeBefore(rcr.StartDateTime, -30) {
 		response.BadRequest("You can only make reservation at least 30 minutes before the start time").AbortWithError(c)
 		return
 	}
 
+	// call grpc to get room info
+	roomIDStr := strconv.FormatUint(uint64(rcr.RoomId), 10)
+	space, err := GetSpaceAndRoomInfo(service.ParseToInt64(roomIDStr))
+	if err != nil {
+		response.NotFound("Room is not found").AbortWithError(c)
+		return
+	}
+	room := space.RoomList[0]
+
 	reservation := rcr.ToReservation()
+	userList := rcr.PendingParticipants
 
 	reservation.Status = "created"
 
-	if(userType == "staff") {
+	if userType == "staff" {
 		reservation.Participants = reservation.PendingParticipants
 		reservation.PendingParticipants = []int64{}
 	} else {
@@ -69,63 +85,60 @@ func CreateReservationHandler(c *gin.Context) {
 		return
 	}
 
-	if(userType == "staff") {
-		c.JSON(200, response.CommonResponse{
-			Success: true,
-		}.AddInterfaces(map[string]interface{}{
-			"reservation": reservation,
-		}))
-		return
+	if userType == "user" {
+		// send email to every pending participant
+		subject := "You have been invited to a reservation"
+		for _, pendingParticipant := range reservation.PendingParticipants {
+			receiverEmail := strconv.FormatInt(pendingParticipant, 10) + os.Getenv("EMAIL_DOMAIN")
+
+			body := "You have been invited to a reservation. Please click the link below to view the reservation details.\n" +
+				"<br> Please validate your account by clicking the link below: <a href='" +
+				os.Getenv("FRONTEND_URL") +
+				os.Getenv("RESERVATION_VERIFY_PATH") +
+				"?reservationId=" +
+				strconv.FormatUint(uint64(reservation.ID), 10) +
+				"&userId=" +
+				strconv.FormatUint(uint64(pendingParticipant), 10) +
+				"'>View Reservation</a>"
+
+			_ = service.SendMail(receiverEmail, subject, body)
+		}
 	}
-
-	// send email to every pending participant
-	subject := "You have been invited to a reservation"
-	for _, pendingParticipant := range reservation.PendingParticipants {
-		receiverEmail := strconv.FormatInt(pendingParticipant, 10) + os.Getenv("EMAIL_DOMAIN")
-
-		body := "You have been invited to a reservation. Please click the link below to view the reservation details.\n" +
-			"<br> Please validate your account by clicking the link below: <a href='" +
-			os.Getenv("FRONTEND_URL") +
-			os.Getenv("RESERVATION_VERIFY_PATH") +
-			"?reservationId=" +
-			strconv.FormatUint(uint64(reservation.ID), 10) +
-			"&userId=" +
-			strconv.FormatUint(uint64(pendingParticipant), 10) +
-			"'>View Reservation</a>"
-
-		_ = service.SendMail(receiverEmail, subject, body)
-	}
-
-	c.JSON(200, response.CommonResponse{
-		Success: true,
-	}.AddInterfaces(map[string]interface{}{
-		"reservation": reservation,
-	}))
-
 
 	// TODO: Flow data to message broker
 	// call grpc to get room info
 	// send data via message broker
 	// Connect to RabbitMQ
 
-	// call grpc to get room info
 	// call http to get user info
+	
+	users, err := GetUsersByUserId(userList)
+	if err != nil {
+		log.Println("Failed to get users:", err)
+		return
+	}
 
+	const layout = "2006-01-02 15:04:05"
+	StartDateTime, err := time.Parse(layout, reservation.StartDateTime)
+	if err != nil {
+		log.Println("Failed to parse time:", err)
+		return
+	}
+	EndDateTime, err := time.Parse(layout, reservation.EndDateTime)
+	if err != nil {
+		log.Println("Failed to parse time:", err)
+		return
+	}
 	var report = map[string]interface{}{
-		"id":             reservation.ID,
-		"room_id":        reservation.RoomId,
-		"room_name":      "Room 1",
-		"space_name":     "Conference Room",
-		"space_id":       uuid.New().String(),
+		"id":             strconv.FormatUint(uint64(reservation.ID), 10),
+		"room_id":        strconv.FormatUint(uint64(reservation.RoomId), 10),
+		"room_name":      room.Name,
+		"space_name":     space.Name,
+		"space_id":       strconv.FormatUint(uint64(space.ID), 10),
 		"status":         "created",
-		"start_datetime": reservation.StartDateTime,
-		"end_datetime":   reservation.EndDateTime,
-		"participant": []map[string]string{
-			{
-				"role":    "Staff",
-				"faculty": "Engineering",
-			},
-		},
+		"start_datetime": StartDateTime,
+		"end_datetime":   EndDateTime,
+		"participant":    users,
 	}
 
 	reportJSON, err := json.Marshal(report)
@@ -133,10 +146,16 @@ func CreateReservationHandler(c *gin.Context) {
 		log.Fatalf("Failed to convert report to JSON: %s", err)
 	}
 
-	rabbitMQ := publisher.NewPublisher()
+	rabbitMQ := publisher.NewPublisher() // move
 	ctx := context.Background()
 
 	rabbitMQ.PublishDefaultExchange(ctx, reportJSON)
+	
+	c.JSON(200, response.CommonResponse{
+		Success: true,
+	}.AddInterfaces(map[string]interface{}{
+		"reservation": reservation,
+	}))
 }
 
 func GetReservationsHandler(c *gin.Context) {
@@ -248,8 +267,8 @@ func CancelReservationHandler(c *gin.Context) {
 	}
 
 	userType := c.GetHeader("type")
-	
-	if(userType == "user") {
+
+	if userType == "user" {
 		userId := c.GetHeader("user_id")
 		if userId != "" {
 			// check if user is the first participant in the reservation
@@ -333,16 +352,16 @@ func ApproveReservationHandler(c *gin.Context) {
 	}
 
 	approver := c.GetHeader("id")
-	
-	if(reservation.Status != "pending") {
+
+	if reservation.Status != "pending" {
 		response.Forbidden("Reservation not confirmed").AbortWithError(c)
 		return
 	}
-	if(approver == "") {
+	if approver == "" {
 		response.Forbidden("You are not allowed to approve this reservation").AbortWithError(c)
 		return
 	}
-	
+
 	reservation.Approver = service.ParseToUint(approver)
 	reservation.Status = "completed"
 	if err := reservation.Update(); err != nil {
@@ -353,7 +372,92 @@ func ApproveReservationHandler(c *gin.Context) {
 	c.JSON(200, response.CommonResponse{
 		Success: true,
 	})
-	
+
 }
 
+func GetUsersByUserId(user_list []int64) ([]map[string]interface{}, error) {
+	getUsersUrl := os.Getenv("UMS_URL") + `/api/user`
 
+	type userBody struct {
+		User_list  []int64 `json:"user_list"`
+	}
+	var userList userBody;
+	userList.User_list = user_list
+
+	jsonData, err := json.Marshal(userList)
+
+	if err != nil {
+		log.Println("Error encoding JSON:", err)
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", getUsersUrl, bytes.NewBuffer(jsonData))
+	if err != nil {
+		log.Println("Error creating request:", err)
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Println("Error sending request:", err)
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+
+	var result map[string]interface{}
+
+    err = json.NewDecoder(resp.Body).Decode(&result)
+    if err != nil {
+		log.Println("Error decoding JSON:", err)
+		return nil, err
+    }
+
+
+	usersInterface, ok := result["users"].([]interface{})
+	if !ok {
+		log.Println("Error: 'users' is not in the expected format")
+		return nil, err
+	}
+
+	var users []map[string]interface{}
+	for _, user := range usersInterface {
+		userMap, ok := user.(map[string]interface{})
+		if !ok {
+			log.Println("Error: user is not in expected format")
+			continue
+		}
+		users = append(users, userMap)
+	}
+
+	return users, nil
+}
+
+func GetSpaceAndRoomInfo(roomId int64) (*pb.SpaceResponse, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second) 
+	defer cancel()
+
+	client, err := grpc.Dial(os.Getenv("CMS_URL"), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		panic(err)
+	}
+
+	serviceClient := pb.NewSpaceServiceClient(client)
+
+	req := &pb.DisplaySpaceWithRoomInfoRequest{
+		Id: roomId,
+	}
+
+	resp, err := serviceClient.DisplaySpaceWithRoomInfo(ctx, req)
+	if err != nil {
+		log.Fatal("Could not fetch space with room info", err)
+		return nil, err
+	}
+
+	defer client.Close() // Close client when done
+
+	return resp.Space, nil
+
+}

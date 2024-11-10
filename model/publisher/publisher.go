@@ -2,8 +2,9 @@ package publisher
 
 import (
 	"context"
-	"fmt"
 	"os"
+	// "fmt"
+	// "os"
 	"log"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -24,11 +25,7 @@ func NewPublisher() Publisher {
 }
 
 func (p *publisher) newConnection() error {
-	rabbitMqUser := os.Getenv("RABBITMQ_USER")
-	rabbitMqPassword := os.Getenv("RABBITMQ_PASSWORD")
-	rabbitMqHost := os.Getenv("RABBITMQ_HOST")
-	rabbitMqPort := os.Getenv("RABBITMQ_PORT")
-	amqpURL := fmt.Sprintf("amqp://%s:%s@%s:%s/", rabbitMqUser, rabbitMqPassword, rabbitMqHost, rabbitMqPort)
+	amqpURL := os.Getenv("AMQP_URL")
 
 	conn, err := amqp.Dial(amqpURL)
 	if err != nil {
